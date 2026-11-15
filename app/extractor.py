@@ -4,7 +4,6 @@ import time
 from typing import Optional
 from urllib.parse import urljoin
 
-import trafilatura
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 
@@ -14,8 +13,8 @@ _cache: dict[str, tuple[float, Article]] = {}
 CACHE_TTL = 3600
 
 
-async def extract(url: str) -> Article:
-    if url in _cache:
+async def extract(url: str, *, use_cache: bool = True) -> Article:
+    if use_cache and url in _cache:
         ts, article = _cache[url]
         if time.time() - ts < CACHE_TTL:
             return article
@@ -37,16 +36,9 @@ async def extract(url: str) -> Article:
                 pass
             html = await page.content()
 
-            # Try Sanity Portable Text from RSC payload first
             body_text = await _extract_sanity_body(page)
             if not body_text:
-                body_text = trafilatura.extract(
-                    html,
-                    include_images=True,
-                    include_links=True,
-                    no_fallback=False,
-                    favor_precision=True,
-                )
+                raise ValueError("Sanity Portable Text content was not found; article skipped")
         finally:
             await browser.close()
 
@@ -71,8 +63,8 @@ async def extract(url: str) -> Article:
     )
     og_image = _meta(soup, "og:image") or _meta(soup, "twitter:image")
     cover_image = Image(url=og_image) if og_image else None
-    body_html = _body_html(soup)
-    images = _body_images(soup, url)
+    body_html = body_text
+    images = _body_images(BeautifulSoup(f"<article>{body_text}</article>", "lxml"), url)
     tags = _extract_tags(soup)
 
     article = Article(
@@ -231,20 +223,6 @@ def _jsonld_author(soup: BeautifulSoup) -> Optional[str]:
         except (json.JSONDecodeError, AttributeError):
             continue
     return None
-
-
-def _body_html(soup: BeautifulSoup) -> Optional[str]:
-    candidates = [
-        soup.select_one("main article"),
-        soup.select_one("article"),
-        soup.select_one("main"),
-    ]
-    el = next((c for c in candidates if c), None)
-    if not el:
-        return None
-    for dead in el.select("nav, header, footer, [role='navigation'], [aria-label='breadcrumb']"):
-        dead.decompose()
-    return str(el)
 
 
 def _body_images(soup: BeautifulSoup, base_url: str) -> list[Image]:

@@ -1,7 +1,7 @@
 """
 Daily discovery + fetch for anthropic.com/news and anthropic.com/research.
-Maintains a rolling 7-day window: fetches new articles, skips already-saved ones,
-and removes data directories older than WINDOW_DAYS at the end of each run.
+Clears saved article data and fetches every discovered article on each run.
+Keeps a rolling 7-day publication window and uses structured content only.
 """
 
 import argparse
@@ -68,18 +68,6 @@ async def discover_listing(listing_url: str) -> list[str]:
     return urls
 
 
-def already_fetched_urls() -> set[str]:
-    fetched: set[str] = set()
-    for f in DATA_DIR.glob("**/*.json"):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            if url := data.get("url"):
-                fetched.add(url)
-        except Exception:
-            continue
-    return fetched
-
-
 def url_to_slug(url: str) -> str:
     path = urlparse(url).path.strip("/")
     return re.sub(r"[^a-zA-Z0-9_-]", "-", path)
@@ -88,8 +76,9 @@ def url_to_slug(url: str) -> str:
 async def main(test_version: int | None = None) -> None:
     from app.extractor import extract
 
-    DATA_DIR.mkdir(exist_ok=True)
-    fetched = already_fetched_urls()
+    if DATA_DIR.exists():
+        shutil.rmtree(DATA_DIR)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     new_urls: list[str] = []
     for listing in LISTING_PAGES:
@@ -97,13 +86,13 @@ async def main(test_version: int | None = None) -> None:
         found = await discover_listing(listing)
         print(f"  Found {len(found)} links")
         for url in found:
-            if url not in fetched and url not in new_urls:
+            if url not in new_urls:
                 new_urls.append(url)
 
     if not new_urls:
-        print("No new articles found.")
+        print("No articles found.")
     else:
-        print(f"\nFetching {len(new_urls)} new article(s):")
+        print(f"\nFetching {len(new_urls)} article(s):")
         today = date.today().isoformat()
         out_dir = DATA_DIR / today
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -111,7 +100,7 @@ async def main(test_version: int | None = None) -> None:
         for url in new_urls:
             print(f"  → {url}")
             try:
-                article = await extract(url)
+                article = await extract(url, use_cache=False)
                 # Category/filter pages have no date — skip them
                 if not article.published_at:
                     print(f"    Skipped (no published_at — likely a category page)")
@@ -137,41 +126,18 @@ async def main(test_version: int | None = None) -> None:
 
 
 def _body_to_html(text: str, cover_url: str = "", body_images: list = None) -> str:
-    cover_html = (
-        f'<img src="{cover_url}" style="max-width:100%;display:block;margin-bottom:1em">'
-        if cover_url else ""
-    )
-    # New extractor produces clean HTML directly — just prepend cover
-    if text.strip().startswith("<"):
-        return cover_html + text
-
-    # Legacy: trafilatura plain text path
-    text = re.sub(
-        r'!\[([^\]]*)\]\(([^)]+)\)',
-        r'<figure style="margin:1.5em 0"><img src="\2" alt="\1" style="max-width:100%;display:block"></figure>',
-        text,
-    )
-    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', text)
-    parts = []
-    for line in text.split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith("<figure") or line.startswith("<img"):
-            parts.append(line)
-        elif len(line) < 70 and not line[-1] in ".!?,:" and not line[0] in "-*•[":
-            parts.append(f"<h2>{line}</h2>")
-        else:
-            parts.append(f"<p>{line}</p>")
-    inline_urls = set(re.findall(r'<img src="([^"]+)"', "".join(parts)))
-    for img in (body_images or []):
-        url = img.get("url", "") if isinstance(img, dict) else str(img)
-        alt = (img.get("alt") or "") if isinstance(img, dict) else ""
-        if not url or url in inline_urls:
-            continue
-        cap = f'<figcaption style="font-size:0.85em;color:#666;margin-top:0.4em">{alt}</figcaption>' if alt else ""
-        parts.append(f'<figure style="margin:1.5em 0"><img src="{url}" alt="{alt}" style="max-width:100%;display:block">{cap}</figure>')
-    return cover_html + "".join(parts)
+    if not text.strip().startswith("<"):
+        raise ValueError("Structured article HTML is required")
+    inline_bases = {
+        u.split("?")[0] for u in re.findall(r'<img[^>]+src=["\']([^"\']+)', text)
+    }
+    cover_html = ""
+    if cover_url and cover_url.split("?")[0] not in inline_bases:
+        cover_html = (
+            f'<img src="{html_module.escape(cover_url, quote=True)}" '
+            'style="max-width:100%;display:block;margin-bottom:1em">'
+        )
+    return cover_html + text
 
 
 def _generate_feed(test_version: int | None = None) -> None:
@@ -180,7 +146,12 @@ def _generate_feed(test_version: int | None = None) -> None:
     articles = []
     for f in sorted(DATA_DIR.glob("**/*.json"), reverse=True):
         try:
-            articles.append(json.loads(f.read_text(encoding="utf-8")))
+            article = json.loads(f.read_text(encoding="utf-8"))
+            body = article.get("body_text") or ""
+            if not isinstance(body, str) or not body.strip().startswith("<"):
+                print(f"Skipped {f}: structured article HTML is missing")
+                continue
+            articles.append(article)
         except Exception:
             continue
 
@@ -202,7 +173,7 @@ def _generate_feed(test_version: int | None = None) -> None:
         SubElement(item, "title").text = a.get("title") or "Untitled"
         SubElement(item, "link").text = a.get("url", "")
         SubElement(item, "guid", isPermaLink="false").text = a.get("url", "")
-        body = a.get("body_text") or a.get("body_html") or ""
+        body = a["body_text"]
         cover = (a.get("cover_image") or {}).get("url", "")
         body_images = a.get("images") or []
         SubElement(item, "description").text = a.get("summary") or ""
