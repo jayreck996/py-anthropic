@@ -9,6 +9,15 @@ REQUIRED FORMAT FOR EACH ASSET ENTRY:
 
 ## ASSET:{NAME OF ENVIRONMENT} {YYYY-MM-DD HH:MM} → {CONTENT}
 
+## ASSET:py-anthropic 2026-11-15 21:32 → Permanent production feed, structured-only extraction, fresh daily fetches
+
+- Production output is always `feed.xml`, with stable article-URL GUIDs. Daily workflows commit `data/` and `feed.xml` only.
+- Versioned feeds are testing snapshots: `python run_daily.py --feed-only --test-version 15` also creates `feed_v15.xml` without changing production GUIDs or existing snapshots.
+- Extraction uses Sanity Portable Text only. DOM and Trafilatura content fallbacks are removed; articles without structured content are skipped.
+- Every daily run clears saved article data, bypasses the in-memory extraction cache, and fetches all discovered URLs. The rolling publication window remains 7 days.
+- Validation: 9 tests passed on GitHub; a live structured-only fetch of the roadshow-launch article succeeded.
+- Implementation commits: `06d6f3c` (permanent feed) and `cb5bddd` (strict extraction and fresh fetching).
+
 ## ASSET:py-anthropic 2026-11-15 18:46 → Sanity Portable Text inline images — v10 operational
 
 Anthropic blog/research RSS scraper fully operational with inline images from Sanity CMS Portable Text.
