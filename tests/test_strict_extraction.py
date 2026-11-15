@@ -18,11 +18,9 @@ class StrictExtractionTests(unittest.IsolatedAsyncioTestCase):
         self.manager = MagicMock()
         self.manager.__aenter__ = AsyncMock(return_value=browser_api)
         self.manager.__aexit__ = AsyncMock(return_value=None)
-        self.source_name = '_extract_sanity_body' if hasattr(extractor, '_extract_sanity_body') else '_extract_rsc_body'
+        self.source_name = 'extract_claude_body'
 
     def source(self, value):
-        if self.source_name == '_extract_sanity_body':
-            return patch.object(extractor, self.source_name, new=AsyncMock(return_value=value))
         return patch.object(extractor, self.source_name, return_value=value)
 
     async def test_missing_structured_content_fails_even_with_readable_dom(self):

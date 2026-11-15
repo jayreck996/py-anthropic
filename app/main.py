@@ -5,10 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .extractor import extract
 from .models import Article
+from .claude import is_article_url
 
 app = FastAPI(
     title="py-anthropic",
-    description="Fetch full article content (title, body, images, metadata) from anthropic.com",
+    description="Fetch full article content (title, body, images, metadata) from claude.com",
     version="1.0.0",
 )
 
@@ -19,23 +20,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ALLOWED_DOMAINS = {"anthropic.com", "www.anthropic.com"}
-
-
-@app.get("/fetch", response_model=Article, summary="Fetch a full Anthropic article")
+@app.get("/fetch", response_model=Article, summary="Fetch a full Claude article")
 async def fetch_article(
-    url: str = Query(..., description="Full URL of an anthropic.com article")
+    url: str = Query(..., description="Full URL of an claude.com article")
 ):
     """
     Returns title, author, published_at, summary, cover_image,
-    body_html, body_text, images[], and tags[] for any anthropic.com article.
+    body_html, body_text, images[], and tags[] for any claude.com article.
     Results are cached in-memory for 1 hour.
     """
     parsed = urlparse(url)
-    if parsed.netloc.lstrip("www.") not in {"anthropic.com"}:
+    if not is_article_url(url):
         raise HTTPException(
             status_code=400,
-            detail=f"Only anthropic.com URLs are supported. Got: '{parsed.netloc}'",
+            detail=f"Only HTTPS claude.com/resources/articles/<slug> URLs are supported. Got: '{parsed.netloc}'",
         )
     try:
         return await extract(url)

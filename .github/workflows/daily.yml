@@ -1,4 +1,4 @@
-name: Daily Anthropic Fetch
+name: Daily Claude Articles Fetch
 
 on:
   schedule:

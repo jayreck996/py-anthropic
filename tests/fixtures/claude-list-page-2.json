@@ -1,0 +1,77 @@
+{
+  "items": [
+    {
+      "_id": "article-anthropic-research-claude-electronics-design",
+      "slug": null,
+      "date": "2026-11-09",
+      "externalUrl": "https://www.anthropic.com/research/claude-electronics-design"
+    },
+    {
+      "_id": "article-claude-dev-safely-scaling-multi-agent-teams-with-fable-5-2",
+      "slug": null,
+      "date": "2026-11-09",
+      "externalUrl": "https://claude.dev/blog/safely-scaling-multi-agent-teams-with-fable-5-2/"
+    },
+    {
+      "_id": "article-claude-dev-which-claude-model-should-you-build-with",
+      "slug": null,
+      "date": "2026-11-09",
+      "externalUrl": "https://claude.dev/blog/which-claude-model-should-you-build-with/"
+    },
+    {
+      "_id": "article-anthropic-research-components-of-agent-memory",
+      "slug": null,
+      "date": "2026-11-06",
+      "externalUrl": "https://www.anthropic.com/research/components-of-agent-memory"
+    },
+    {
+      "_id": "99ad6e76-719f-4bf4-b908-acd8ae30fa3b",
+      "slug": "introducing-personal-finance-in-claude",
+      "date": "2026-11-05",
+      "externalUrl": null
+    },
+    {
+      "_id": "ef672855-db4d-4e7f-a1ce-dae9cacde4e2",
+      "slug": "claude-enterprise-security-updates",
+      "date": "2026-11-05",
+      "externalUrl": null
+    },
+    {
+      "_id": "72dee840-5e4d-4c88-8b09-8b2205283b43",
+      "slug": "new-agents-and-products-claude-marketplace",
+      "date": "2026-11-04",
+      "externalUrl": null
+    },
+    {
+      "_id": "328c8c47-dcd4-48df-923c-3a6f412f7518",
+      "slug": "message-threads",
+      "date": "2026-11-02",
+      "externalUrl": null
+    },
+    {
+      "_id": "3e745036-067a-4e5e-b009-f54bb5c28bcc",
+      "slug": "smart-reports-surveys-pooled-budgets",
+      "date": "2026-10-28",
+      "externalUrl": null
+    },
+    {
+      "_id": "4cabfa31-f634-4698-96db-9eb7514cdcbd",
+      "slug": "idc-brings-quanta-into-claude-and-adopts-claude-across-the-company",
+      "date": "2026-10-28",
+      "externalUrl": null
+    },
+    {
+      "_id": "bf69c168-ef7e-40de-bf3b-3c3a4317d92d",
+      "slug": "introducing-artifacts-for-legal-work",
+      "date": "2026-10-28",
+      "externalUrl": null
+    },
+    {
+      "_id": "2b7f82a7-1427-40b0-a257-8b9e3563f06c",
+      "slug": "how-to-manage-costs-and-demonstrate-roi-for-claude-code-on-google-cloud",
+      "date": "2026-10-27",
+      "externalUrl": null
+    }
+  ],
+  "total": 319
+}

@@ -1,11 +1,8 @@
 import asyncio
 import sys
-from urllib.parse import urlparse
 
 from app.extractor import extract
-
-ALLOWED = {"anthropic.com", "www.anthropic.com"}
-
+from app.claude import is_article_url
 
 async def main() -> None:
     if len(sys.argv) < 2:
@@ -13,12 +10,13 @@ async def main() -> None:
         sys.exit(1)
 
     url = sys.argv[1]
-    if urlparse(url).netloc not in ALLOWED:
-        print(f"Error: only anthropic.com URLs are supported.", file=sys.stderr)
+    if not is_article_url(url):
+        print(f"Error: only HTTPS claude.com/resources/articles/<slug> URLs are supported.", file=sys.stderr)
         sys.exit(1)
 
     article = await extract(url)
     print(article.model_dump_json(indent=2))
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

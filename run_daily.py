@@ -1,5 +1,5 @@
 """
-Daily discovery + fetch for anthropic.com/news and anthropic.com/research.
+Daily discovery + fetch for Claude resources articles.
 Clears saved article data and fetches every discovered article on each run.
 Keeps a rolling 7-day publication window and uses structured content only.
 """
@@ -10,61 +10,78 @@ import json
 import re
 import shutil
 import sys
+import urllib.request
 from datetime import date, timedelta, timezone
 from email.utils import format_datetime
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlencode, urlparse
 import html as html_module
-import re
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom.minidom import parseString
 
-from bs4 import BeautifulSoup
+from app.claude import CATEGORY_API, LISTING_URL, is_article_url, listing_resources
 
 
-LISTING_PAGES = [
-    "https://www.anthropic.com/news",
-    "https://www.anthropic.com/research",
-]
+LISTING_PAGES = [LISTING_URL]
 
 DATA_DIR = Path("data")
 WINDOW_DAYS = 7
 
 
+def _read_listing(listing_url: str) -> tuple[list, int]:
+    req = urllib.request.Request(listing_url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        return listing_resources(response.read().decode("utf-8"))
+
+
+def _read_resource_page(page_number: int) -> tuple[list, int]:
+    query = urlencode({"page": page_number, "language": "en", "type": "articles"})
+    req = urllib.request.Request(
+        CATEGORY_API + "?" + query,
+        headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json", "Referer": LISTING_URL},
+    )
+    with urllib.request.urlopen(req, timeout=30) as response:
+        data = json.load(response)
+    if not isinstance(data.get("items"), list) or not isinstance(data.get("total"), int):
+        raise ValueError("Claude pagination returned an invalid resource page")
+    return data["items"], data["total"]
+
+
 async def discover_listing(listing_url: str) -> list[str]:
-    from playwright.async_api import async_playwright
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        try:
-            ctx = await browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-                )
-            )
-            page = await ctx.new_page()
-            await page.goto(listing_url, wait_until="networkidle", timeout=30_000)
-            try:
-                await page.wait_for_selector("a[href]", timeout=8_000)
-            except Exception:
-                pass
-            html = await page.content()
-        finally:
-            await browser.close()
-
-    soup = BeautifulSoup(html, "lxml")
-    seen: set[str] = set()
+    items, total = _read_listing(listing_url)
+    cutoff = date.today() - timedelta(days=WINDOW_DAYS)
     urls: list[str] = []
-    for a in soup.find_all("a", href=True):
-        href: str = a["href"]
-        # Require at least two hyphen-separated words in the slug so category
-        # filter pages like /news/announcements or /news/policy are excluded.
-        if re.match(r"^/(news|research)/[a-z0-9]+-[a-z0-9][a-z0-9-]*$", href):
-            full = urljoin("https://www.anthropic.com", href)
-            if full not in seen:
-                seen.add(full)
-                urls.append(full)
+    seen: set[str] = set()
+    seen_pages: set[tuple] = set()
+    page_number = 1
+    while items:
+        signature = tuple((item.get("slug"), item.get("externalUrl"), item.get("date")) for item in items)
+        if signature in seen_pages:
+            raise ValueError("Claude article pagination did not advance")
+        seen_pages.add(signature)
+        reached_cutoff = False
+        for item in items:
+            published = item.get("date")
+            if not published:
+                continue
+            published_date = date.fromisoformat(published[:10])
+            if published_date < cutoff:
+                reached_cutoff = True
+                continue
+            # External resources are separate publications, not Claude article pages.
+            if item.get("externalUrl"):
+                continue
+            slug = item.get("slug")
+            if not isinstance(slug, str):
+                continue
+            url = LISTING_URL + "/" + slug
+            if is_article_url(url) and url not in seen:
+                seen.add(url)
+                urls.append(url)
+        if reached_cutoff or page_number >= total:
+            break
+        page_number += 1
+        items, total = _read_resource_page(page_number)
     return urls
 
 
@@ -159,9 +176,9 @@ def _generate_feed(test_version: int | None = None) -> None:
     rss.set("xmlns:atom", "http://www.w3.org/2005/Atom")
     rss.set("xmlns:content", "http://purl.org/rss/1.0/modules/content/")
     channel = SubElement(rss, "channel")
-    SubElement(channel, "title").text = "Anthropic News & Research"
-    SubElement(channel, "link").text = "https://www.anthropic.com/news"
-    SubElement(channel, "description").text = "Latest articles from Anthropic"
+    SubElement(channel, "title").text = "Claude Articles"
+    SubElement(channel, "link").text = LISTING_URL
+    SubElement(channel, "description").text = "Latest Claude articles from Anthropic"
     SubElement(channel, "language").text = "en"
     atom_link = SubElement(channel, "atom:link")
     atom_link.set("href", "https://raw.githubusercontent.com/jayreck996/py-anthropic/master/feed.xml")

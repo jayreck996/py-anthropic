@@ -1,10 +1,10 @@
-name: Fetch Anthropic Article
+name: Fetch Claude Article
 
 on:
   workflow_dispatch:
     inputs:
       url:
-        description: "Full URL of the anthropic.com article to fetch"
+        description: "Full HTTPS claude.com/resources/articles/<slug> URL to fetch"
         required: true
         type: string
 
@@ -36,7 +36,10 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Fetch article
-        run: python fetch.py "${{ github.event.inputs.url }}" | tee result.json
+        env:
+          ARTICLE_URL: ${{ github.event.inputs.url }}
+        shell: bash
+        run: python fetch.py "$ARTICLE_URL" | tee result.json
 
       - name: Upload JSON artifact
         uses: actions/upload-artifact@v4
