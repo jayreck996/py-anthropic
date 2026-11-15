@@ -149,4 +149,3 @@ class FlightTree:
         if isinstance(value, dict):
             return self.image(value, active, depth)
         return ''
-
