@@ -150,7 +150,7 @@ def _generate_feed() -> None:
     SubElement(channel, "description").text = "Latest articles from Anthropic"
     SubElement(channel, "language").text = "en"
     atom_link = SubElement(channel, "atom:link")
-    atom_link.set("href", "https://raw.githubusercontent.com/jayreck996/py-anthropic/master/feed_v2.xml")
+    atom_link.set("href", "https://raw.githubusercontent.com/jayreck996/py-anthropic/master/feed.xml")
     atom_link.set("rel", "self")
     atom_link.set("type", "application/rss+xml")
 
@@ -195,8 +195,9 @@ def _generate_feed() -> None:
         xml_str,
         flags=re.DOTALL,
     )
+    Path("feed.xml").write_text(xml_str, encoding="utf-8")
     Path("feed_v2.xml").write_text(xml_str, encoding="utf-8")
-    print(f"Feed updated: {len(articles)} item(s) → feed_v2.xml")
+    print(f"Feed updated: {len(articles)} item(s) → feed.xml + feed_v2.xml")
 
 
 def _cleanup_old_data() -> None:
