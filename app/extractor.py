@@ -1,3 +1,4 @@
+import html as html_module
 import json
 import time
 from typing import Optional
@@ -9,9 +10,8 @@ from playwright.async_api import async_playwright
 
 from .models import Article, Image
 
-# Simple in-memory cache: url -> (timestamp, Article)
 _cache: dict[str, tuple[float, Article]] = {}
-CACHE_TTL = 3600  # 1 hour
+CACHE_TTL = 3600
 
 
 async def extract(url: str) -> Article:
@@ -20,7 +20,36 @@ async def extract(url: str) -> Article:
         if time.time() - ts < CACHE_TTL:
             return article
 
-    html = await _render(url)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        try:
+            ctx = await browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+                )
+            )
+            page = await ctx.new_page()
+            await page.goto(url, wait_until="networkidle", timeout=30_000)
+            try:
+                await page.wait_for_selector("main article, main section", timeout=8_000)
+            except Exception:
+                pass
+            html = await page.content()
+
+            # Try Sanity Portable Text from RSC payload first
+            body_text = await _extract_sanity_body(page)
+            if not body_text:
+                body_text = trafilatura.extract(
+                    html,
+                    include_images=True,
+                    include_links=True,
+                    no_fallback=False,
+                    favor_precision=True,
+                )
+        finally:
+            await browser.close()
+
     soup = BeautifulSoup(html, "lxml")
 
     title = (
@@ -29,31 +58,19 @@ async def extract(url: str) -> Article:
         or _jsonld_field(soup, "headline")
         or (soup.h1.get_text(strip=True) if soup.h1 else None)
     )
-
     summary = (
         _meta(soup, "og:description")
         or _meta(soup, "description")
         or _jsonld_field(soup, "description")
     )
-
     author = _jsonld_author(soup) or _meta(soup, "author")
-
     published_at = (
         _meta(soup, "article:published_time")
         or _jsonld_field(soup, "datePublished")
         or _jsonld_field(soup, "dateCreated")
     )
-
     og_image = _meta(soup, "og:image") or _meta(soup, "twitter:image")
     cover_image = Image(url=og_image) if og_image else None
-
-    body_text = trafilatura.extract(
-        html,
-        include_images=True,
-        include_links=True,
-        no_fallback=False,
-        favor_precision=True,
-    )
     body_html = _body_html(soup)
     images = _body_images(soup, url)
     tags = _extract_tags(soup)
@@ -74,26 +91,105 @@ async def extract(url: str) -> Article:
     return article
 
 
-async def _render(url: str) -> str:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        try:
-            ctx = await browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-                )
+async def _extract_sanity_body(page) -> Optional[str]:
+    """Extract Sanity Portable Text body from Next.js App Router RSC payload."""
+    blocks = await page.evaluate("""
+    () => {
+        const scripts = [...document.querySelectorAll('script:not([src])')];
+        const decoded = scripts
+            .filter(s => s.textContent.includes('__next_f.push'))
+            .map(s => {
+                const m = s.textContent.match(/push\\(\\[1,(".*")\\]\\)$/s);
+                try { return m ? JSON.parse(m[1]) : ''; } catch(e) { return ''; }
+            }).join('');
+
+        const bodyIdx = decoded.indexOf('"body":[');
+        if (bodyIdx < 0) return null;
+        const bodyStart = bodyIdx + 7;
+        let depth = 0, i = bodyStart, bodyEnd = -1;
+        for (; i < decoded.length && i < bodyStart + 150000; i++) {
+            if (decoded[i] === '[') depth++;
+            else if (decoded[i] === ']') { depth--; if (depth === 0) { bodyEnd = i + 1; break; } }
+        }
+        if (bodyEnd < 0) return null;
+        try { return JSON.parse(decoded.slice(bodyStart, bodyEnd)); }
+        catch(e) { return null; }
+    }
+    """)
+    if not blocks:
+        return None
+    return _portable_text_to_html(blocks)
+
+
+def _portable_text_to_html(blocks: list) -> str:
+    """Convert Sanity Portable Text blocks to clean HTML."""
+    parts = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        btype = block.get("_type")
+
+        if btype == "image":
+            url = block.get("url", "")
+            desc = block.get("description", "")
+            if not url:
+                continue
+            alt = html_module.escape(desc)
+            cap = (
+                f'<figcaption style="font-size:0.85em;color:#666;margin-top:0.4em">{alt}</figcaption>'
+                if alt else ""
             )
-            page = await ctx.new_page()
-            await page.goto(url, wait_until="networkidle", timeout=30_000)
-            # Anthropic blog hydrates content in <main>
-            try:
-                await page.wait_for_selector("main article, main section", timeout=8_000)
-            except Exception:
-                pass
-            return await page.content()
-        finally:
-            await browser.close()
+            parts.append(
+                f'<figure style="margin:1.5em 0">'
+                f'<img src="{url}" alt="{alt}" style="max-width:100%;display:block">'
+                f"{cap}</figure>"
+            )
+
+        elif btype == "block":
+            style = block.get("style", "normal")
+            children = block.get("children") or []
+            mark_defs = {
+                m["_key"]: m
+                for m in (block.get("markDefs") or [])
+                if isinstance(m, dict) and "_key" in m
+            }
+
+            inner = ""
+            for span in children:
+                if not isinstance(span, dict):
+                    continue
+                text = html_module.escape(span.get("text", ""))
+                marks = span.get("marks") or []
+                # Links (via markDefs)
+                link = next(
+                    (mark_defs[m] for m in marks if m in mark_defs and mark_defs[m].get("_type") == "link"),
+                    None,
+                )
+                if link:
+                    href = html_module.escape(link.get("href", ""))
+                    text = f'<a href="{href}">{text}</a>'
+                # Inline styles
+                if "strong" in marks:
+                    text = f"<strong>{text}</strong>"
+                if "em" in marks:
+                    text = f"<em>{text}</em>"
+                if "code" in marks:
+                    text = f"<code>{text}</code>"
+                inner += text
+
+            if not inner.strip():
+                continue
+
+            if style in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                parts.append(f"<{style}>{inner}</{style}>")
+            elif style == "blockquote":
+                parts.append(f"<blockquote>{inner}</blockquote>")
+            elif block.get("listItem"):
+                parts.append(f"<li>{inner}</li>")
+            else:
+                parts.append(f"<p>{inner}</p>")
+
+    return "".join(parts)
 
 
 def _meta(soup: BeautifulSoup, name: str) -> Optional[str]:
@@ -138,7 +234,6 @@ def _jsonld_author(soup: BeautifulSoup) -> Optional[str]:
 
 
 def _body_html(soup: BeautifulSoup) -> Optional[str]:
-    # Try progressively narrower selectors; Anthropic's Next.js uses article inside main
     candidates = [
         soup.select_one("main article"),
         soup.select_one("article"),
@@ -169,7 +264,6 @@ def _body_images(soup: BeautifulSoup, base_url: str) -> list[Image]:
             h = int(img.get("height", 0)) or None
         except (ValueError, TypeError):
             w = h = None
-        # Skip tiny icons (width < 50px when explicitly set)
         if w and w < 50:
             continue
         images.append(Image(url=full, alt=img.get("alt"), width=w, height=h))
@@ -178,7 +272,6 @@ def _body_images(soup: BeautifulSoup, base_url: str) -> list[Image]:
 
 def _extract_tags(soup: BeautifulSoup) -> list[str]:
     tags: list[str] = []
-    # Anthropic marks categories/topics as links in a header area
     for el in soup.select(
         "[class*='tag' i], [class*='category' i], [class*='topic' i], "
         "[rel='tag'], [data-category]"
