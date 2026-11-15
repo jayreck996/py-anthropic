@@ -52,7 +52,9 @@ async def discover_listing(listing_url: str) -> list[str]:
     urls: list[str] = []
     for a in soup.find_all("a", href=True):
         href: str = a["href"]
-        if re.match(r"^/(news|research)/[^/]+$", href):
+        # Require at least two hyphen-separated words in the slug so category
+        # filter pages like /news/announcements or /news/policy are excluded.
+        if re.match(r"^/(news|research)/[a-z0-9]+-[a-z0-9][a-z0-9-]*$", href):
             full = urljoin("https://www.anthropic.com", href)
             if full not in seen:
                 seen.add(full)
@@ -103,6 +105,10 @@ async def main() -> None:
         print(f"  → {url}")
         try:
             article = await extract(url)
+            # Category/filter pages have no date — skip them
+            if not article.published_at:
+                print(f"    Skipped (no published_at — likely a category page)")
+                continue
             # Skip articles published outside the window (when date is known)
             if article.published_at:
                 try:
