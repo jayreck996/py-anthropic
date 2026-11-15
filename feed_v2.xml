@@ -5,7 +5,7 @@
     <link>https://www.anthropic.com/news</link>
     <description>Latest articles from Anthropic</description>
     <language>en</language>
-    <atom:link href="https://raw.githubusercontent.com/jayreck996/py-anthropic/master/feed_v2.xml" rel="self" type="application/rss+xml"/>
+    <atom:link href="https://raw.githubusercontent.com/jayreck996/py-anthropic/master/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
       <title>Claude can design electronic prototypes from start to finish</title>
       <link>https://www.anthropic.com/research/claude-electronics-design</link>
