@@ -181,7 +181,7 @@ def _generate_feed(test_version: int | None = None) -> None:
     SubElement(channel, "description").text = "Latest Claude articles from Anthropic"
     SubElement(channel, "language").text = "en"
     atom_link = SubElement(channel, "atom:link")
-    atom_link.set("href", "https://raw.githubusercontent.com/jayreck996/py-anthropic/master/feed.xml")
+    atom_link.set("href", "https://jayreck996.github.io/py-anthropic/feed.xml")
     atom_link.set("rel", "self")
     atom_link.set("type", "application/rss+xml")
 
