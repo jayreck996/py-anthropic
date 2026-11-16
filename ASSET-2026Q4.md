@@ -9,6 +9,14 @@ REQUIRED FORMAT FOR EACH ASSET ENTRY:
 
 ## ASSET:{NAME OF ENVIRONMENT} {YYYY-MM-DD HH:MM} → {CONTENT}
 
+## ASSET:py-anthropic 2026-11-16 18:01 → GitHub Pages XML feed publishing
+
+- The daily workflow now deploys `feed.xml` to `https://jayreck996.github.io/py-anthropic/feed.xml` after each fetch.
+- The feed advertises the Pages URL as its Atom self link. GitHub Pages serves it with `Content-Type: application/xml`; the raw GitHub URL remains available but serves `text/plain`.
+- Enabled GitHub Pages with Actions publishing. Verified the live endpoint returns HTTP 200 and parses as RSS XML with 12 articles.
+- Validation run: https://github.com/jayreck996/py-anthropic/actions/runs/43806449960
+- Implementation commits: `f239bcf` (Pages deployment), `1e3b5a9` (enable Pages), and `c18c15f` (canonical Atom self link).
+
 ## ASSET:py-anthropic 2026-11-15 21:32 → Permanent production feed, structured-only extraction, fresh daily fetches
 
 - Production output is always `feed.xml`, with stable article-URL GUIDs. Daily workflows commit `data/` and `feed.xml` only.
