@@ -5,7 +5,7 @@
     <link>https://claude.com/resources/articles</link>
     <description>Latest Claude articles from Anthropic</description>
     <language>en</language>
-    <atom:link href="https://raw.githubusercontent.com/jayreck996/py-anthropic/master/feed.xml" rel="self" type="application/rss+xml"/>
+    <atom:link href="https://jayreck996.github.io/py-anthropic/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
       <title>Which Claude model is best to use for knowledge work</title>
       <link>https://claude.com/resources/articles/using-claude-opus-5-5-as-your-daily-driver-for-knowledge-work</link>
